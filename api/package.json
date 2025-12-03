@@ -1,0 +1,81 @@
+const { nanoid } = require('nanoid');
+
+// --- Non-Persistent In-Memory Data Store ---
+// WARNING: This array will be reset every time the serverless function "wakes up"
+// or is redeployed. For production, replace this with a database (like Firestore).
+let expenses = [
+    { id: nanoid(6), description: 'Groceries', amount: 55.50, category: 'Food', date: '2023-11-28' },
+    { id: nanoid(6), description: 'Vercel Subscription', amount: 20.00, category: 'Software', date: '2023-11-29' },
+    { id: nanoid(6), description: 'New Monitor', amount: 350.00, category: 'Hardware', date: '2023-11-30' },
+];
+
+/**
+ * Main serverless function handler.
+ * @param {import('http').IncomingMessage} req
+ * @param {import('http').ServerResponse} res
+ */
+module.exports = async (req, res) => {
+    // Set CORS headers for local development and general API access
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    // Handle OPTIONS requests (preflight check)
+    if (req.method === 'OPTIONS') {
+        res.writeHead(204);
+        res.end();
+        return;
+    }
+
+    try {
+        if (req.method === 'GET') {
+            // GET /api/expenses - Retrieve all expenses
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true, expenses }));
+        } 
+        
+        else if (req.method === 'POST') {
+            // POST /api/expenses - Add a new expense
+            let body = '';
+            
+            // Read the request body
+            for await (const chunk of req) {
+                body += chunk.toString();
+            }
+
+            const data = JSON.parse(body);
+
+            if (!data.description || !data.amount || !data.category || !data.date) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: 'Missing required fields: description, amount, category, and date are needed.' }));
+                return;
+            }
+
+            const newExpense = {
+                id: nanoid(6),
+                description: String(data.description).trim(),
+                amount: parseFloat(data.amount),
+                category: String(data.category).trim(),
+                date: String(data.date).trim(),
+            };
+
+            // Add to the in-memory store
+            expenses.push(newExpense); 
+
+            // Respond with the newly created expense
+            res.writeHead(201, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true, expense: newExpense }));
+
+        } 
+        
+        else {
+            // Handle unsupported methods
+            res.writeHead(405, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false, message: 'Method Not Allowed' }));
+        }
+    } catch (error) {
+        console.error('API Error:', error);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: 'Internal Server Error' }));
+    }
+};
